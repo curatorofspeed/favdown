@@ -1,0 +1,44 @@
+name: favdown
+
+on:
+  schedule:
+    - cron: '*/5 16-23 * * *'   # 12:00 PM – 7:55 PM ET
+    - cron: '*/5 0-6 * * *'     #  8:00 PM – 2:55 AM ET (late West Coast games)
+  workflow_dispatch:
+    inputs:
+      test:
+        description: Send a test ping
+        type: boolean
+        default: false
+
+concurrency:
+  group: favdown
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  poll:
+    if: vars.FAVDOWN_KILL != '1'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run watcher
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          FAVDOWN_TEST: ${{ inputs.test == true && '1' || '0' }}
+          FAVDOWN_REPING: ${{ vars.FAVDOWN_REPING || '1' }}
+          FAVDOWN_RECOVERY: ${{ vars.FAVDOWN_RECOVERY || '1' }}
+        run: node favdown.js
+
+      - name: Persist state
+        run: |
+          if [ -n "$(git status --porcelain state.json)" ]; then
+            git config user.name favdown-bot
+            git config user.email favdown@users.noreply.github.com
+            git add state.json
+            git commit -m "state $(date -u +%H:%M)"
+            git push
+          fi
