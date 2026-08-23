@@ -6,7 +6,7 @@
 const fs = require('fs');
 
 const NTFY_SERVER = process.env.NTFY_SERVER || 'https://ntfy.sh';
-const TOPIC = process.env.NTFY_TOPIC;
+const TOPIC = (process.env.NTFY_TOPIC || '').trim();
 const REPING = (process.env.FAVDOWN_REPING ?? '1') === '1';     // ping again when deficit grows
 const RECOVERY = (process.env.FAVDOWN_RECOVERY ?? '1') === '1'; // ping when fav ties/retakes lead
 const STATE_FILE = 'state.json';
@@ -74,18 +74,20 @@ function decide(prev, g, opts = { reping: REPING, recovery: RECOVERY }) {
   const wasLive = !!(prev && prev.state === 'in' && prev.favStatus);
 
   if (g.favStatus === 'down' && (!wasLive || prev.favStatus !== 'down'))
-    return [[`🔻 FAV DOWN: ${f.ab}`, `${f.ab}${line} trails ${opp.ab} ${f.runs}–${opp.runs} · ${g.detail}`, 'baseball,small_red_triangle_down']];
+    return [[`FAV DOWN: ${f.ab}`, `${f.ab}${line} trails ${opp.ab} ${f.runs}-${opp.runs} · ${g.detail}`, 'baseball,small_red_triangle_down']];
   if (g.favStatus === 'down' && wasLive && prev.favStatus === 'down' && typeof prev.diff === 'number' && g.diff < prev.diff && opts.reping)
-    return [[`🔻 ${f.ab} down ${-g.diff}`, `Deficit grew: ${f.runs}–${opp.runs} vs ${opp.ab} · ${g.detail}`, 'baseball,chart_with_downwards_trend']];
+    return [[`${f.ab} down ${-g.diff}`, `Deficit grew: ${f.runs}-${opp.runs} vs ${opp.ab} · ${g.detail}`, 'baseball,chart_with_downwards_trend']];
   if (g.favStatus !== 'down' && wasLive && prev.favStatus === 'down' && opts.recovery)
-    return [[`🟢 ${f.ab} back`, `${f.ab}${line} ${g.diff > 0 ? 'leads' : 'ties'} ${opp.ab} ${f.runs}–${opp.runs} · ${g.detail}`, 'baseball,white_check_mark', 'default']];
+    return [[`${f.ab} back`, `${f.ab}${line} ${g.diff > 0 ? 'leads' : 'ties'} ${opp.ab} ${f.runs}-${opp.runs} · ${g.detail}`, 'baseball,white_check_mark', 'default']];
   return [];
 }
 
 async function push(title, message, tags, priority = 'high') {
+  // HTTP headers are Latin-1 only — strip emoji/unicode from Title (ntfy Tags render the icons instead).
+  const ascii = s => String(s).normalize('NFKD').replace(/[^\x20-\x7E]/g, '').replace(/\s+/g, ' ').trim();
   const r = await fetch(`${NTFY_SERVER}/${TOPIC}`, {
     method: 'POST', body: message,
-    headers: { ...HEADERS, Title: title, Priority: priority, Tags: tags }
+    headers: { ...HEADERS, Title: ascii(title), Priority: priority, Tags: tags }
   });
   if (!r.ok) console.error('ntfy failed', r.status);
 }
@@ -94,7 +96,7 @@ async function main() {
   if (!TOPIC) { console.error('NTFY_TOPIC not set'); process.exit(1); }
 
   if (process.env.FAVDOWN_TEST === '1') {
-    await push('🔻 FAV DOWN: TEST', 'Pipeline live. FAV (-150 · 60¢) trails OPP 2–4 · Bot 6th', 'baseball,rotating_light');
+    await push('FAV DOWN: TEST', 'Pipeline live. FAV (-150 · 60¢) trails OPP 2-4 · Bot 6th', 'baseball,rotating_light');
     console.log('test ping sent'); return;
   }
 
